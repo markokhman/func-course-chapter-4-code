@@ -19,7 +19,7 @@
   return ();
 }
 
-(int, slice) get_the_latest_sender() method_id {
+(int, slice) get_contract_storage_data() method_id {
   slice ds = get_data().begin_parse();
   return (
     ds~load_uint(32), ;; counter_value

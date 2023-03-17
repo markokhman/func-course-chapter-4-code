@@ -1,28 +1,77 @@
 #include "imports/stdlib.fc";
 
+const const::min_tons_for_storage = 10000000; ;; 0.01 TON
+
+(int, slice, slice) load_data() inline {
+  var ds = get_data().begin_parse();
+  return (
+    ds~load_uint(32), ;; counter_value
+    ds~load_msg_addr(), ;; the most recent sender
+    ds~load_msg_addr() ;; owner_address
+  );
+}
+
+() save_data(int counter_value, slice recent_sender, slice owner_address) impure inline {
+  set_data(begin_cell()
+    .store_uint(counter_value, 32) ;; counter_value
+    .store_slice(recent_sender) ;; the most recent sender
+    .store_slice(owner_address) ;; owner_address
+    .end_cell());
+}
+
 () recv_internal(int msg_value, cell in_msg, slice in_msg_body) impure {
   slice cs = in_msg.begin_parse();
   int flags = cs~load_uint(4);
   slice sender_address = cs~load_msg_addr();
 
   int op = in_msg_body~load_uint(32);
+
+  var (counter_value, recent_sender, owner_address) = load_data();
 	
   if (op == 1) {
-    slice ds = get_data().begin_parse();
-    int counter_value = ds~load_uint(32);					
-    set_data(
-      begin_cell().store_uint(counter_value + 1, 32).store_slice(sender_address).end_cell()
-    );
-    return ();
+    save_data(counter_value + 1, sender_address, owner_address);
+    return();
   }
 
-  return ();
+  if (op == 2) {
+    return();
+  }
+
+  if (op == 3) {
+    throw_unless(103, equal_slice_bits(sender_address, owner_address));
+
+    int withdraw_amount = in_msg_body~load_coins();
+    var [balance, _] = get_balance();
+    throw_unless(104, balance >= withdraw_amount);
+
+    int return_value = min(withdraw_amount, balance - const::min_tons_for_storage);
+
+    int msg_mode = 1; ;; 0 (Ordinary message) + 1 (Pay transfer fees separately from the message value)
+
+    var msg = begin_cell()
+            .store_uint(0x18, 6)
+            .store_slice(sender_address)
+            .store_coins(return_value)
+            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+    send_raw_message(msg.end_cell(), msg_mode);
+
+    return();
+  }
+
+  throw(777);
 }
 
-(int, slice) get_contract_storage_data() method_id {
-  slice ds = get_data().begin_parse();
+(int, slice, slice) get_contract_storage_data() method_id {
+  var (counter_value, recent_sender, owner_address) = load_data();
   return (
-    ds~load_uint(32), ;; counter_value
-    ds~load_msg_addr() ;; the most recent sender
+    counter_value,
+    recent_sender,
+    owner_address
   );
+}
+
+int balance() method_id {
+  var [balance, _] = get_balance();
+  return balance;
 }

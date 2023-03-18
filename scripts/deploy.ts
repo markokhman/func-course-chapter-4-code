@@ -1,69 +1,22 @@
-import { hex } from "../build/main.compiled.json";
-import {
-  beginCell,
-  Cell,
-  contractAddress,
-  StateInit,
-  storeStateInit,
-  toNano,
-} from "ton";
-import qs from "qs";
-import qrcode from "qrcode-terminal";
+import { address, toNano } from "ton-core";
+import { MainContract } from "../wrappers/MainContract";
+import { compile, NetworkProvider } from "@ton-community/blueprint";
 
-import dotenv from "dotenv";
-dotenv.config();
-
-async function deployScript() {
-  console.log(
-    "================================================================="
+export async function run(provider: NetworkProvider) {
+  const myContract = MainContract.createFromConfig(
+    {
+      number: 0,
+      address: address("kQDPKoik0b-fi0pGukkc3GjzLgtTmh0118kizMWh4nVo_GpG"),
+      owner_address: address(
+        "kQDPKoik0b-fi0pGukkc3GjzLgtTmh0118kizMWh4nVo_GpG"
+      ),
+    },
+    await compile("MainContract")
   );
-  console.log("Deploy script is running, let's deploy our main.fc contract...");
 
-  const codeCell = Cell.fromBoc(Buffer.from(hex, "hex"))[0];
-  const dataCell = new Cell();
+  const openedContract = provider.open(myContract);
 
-  const stateInit: StateInit = {
-    code: codeCell,
-    data: dataCell,
-  };
+  openedContract.sendDeploy(provider.sender(), toNano("0.05"));
 
-  const stateInitBuilder = beginCell();
-  storeStateInit(stateInit)(stateInitBuilder);
-  const stateInitCell = stateInitBuilder.endCell();
-
-  // const stateInitCell = beginCell()
-  //   .storeBit(false) // split_depth - Parameter for the highload contracts, defines behaviour of splitting into multiple instances in different shards. Currently StateInit used without it.
-  //   .storeBit(false) // special - Used for invoking smart contracts in every new block of the blockchain. Available only in the masterchain. Regular user's contracts used without it.
-  //   .storeMaybeRef(codeCell) // code - Contract's serialized code.
-  //   .storeMaybeRef(dataCell) // data - Contract initial data.
-  //   .storeUint(0, 1) // library - Currently used StateInit without libs
-  //   .endCell();
-
-  const address = contractAddress(0, {
-    code: codeCell,
-    data: dataCell,
-  });
-
-  console.log(
-    `The address of the contract is following: ${address.toString()}`
-  );
-  console.log(`Please scan the QR code below to deploy the contract:`);
-
-  let link =
-    `https://${process.env.TESTNET ? "test." : ""}.tonhub.com/transfer/` +
-    address.toString({
-      testOnly: process.env.TESTNET ? true : false,
-    }) +
-    "?" +
-    qs.stringify({
-      text: "Deploy contract",
-      amount: toNano(1).toString(10),
-      init: stateInitCell.toBoc({ idx: false }).toString("base64"),
-    });
-
-  qrcode.generate(link, { small: true }, (code) => {
-    console.log(code);
-  });
+  await provider.waitForDeploy(myContract.address);
 }
-
-deployScript();
